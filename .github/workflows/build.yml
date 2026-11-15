@@ -1,0 +1,255 @@
+name: Build Fleet Combo (Windows)
+
+# Builds both Unbound games from your forks, the NEI mods for each, and the Fleet Combo host, and packages them
+# into one folder: FleetCombo.exe + oot/ + mm/. Download the "FleetCombo-windows" artifact from the run.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      engine_ref:
+        description: Branch of both game forks to build (engine + Fleet integration)
+        default: unbound-modapi
+      mods_ref_oot:
+        description: Shipwright branch that holds the NEI mod sources
+        default: unbound-mod-nei
+      mods_ref_mm:
+        description: 2ship2harkinian branch that holds the NEI mod sources
+        default: 2ship-unbound-mod-nei
+
+env:
+  OOT_REPO: ${{ github.repository_owner }}/Shipwright
+  MM_REPO: ${{ github.repository_owner }}/2ship2harkinian
+  ENGINE_REF: ${{ inputs.engine_ref || 'unbound-modapi' }}
+  OOT_MODS_REF: ${{ inputs.mods_ref_oot || 'unbound-mod-nei' }}
+  MM_MODS_REF: ${{ inputs.mods_ref_mm || '2ship-unbound-mod-nei' }}
+
+jobs:
+  # The port archives (soh.o2r / 2ship.o2r) are the ports' own assets, generated without any ROM.
+  otr-oot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OOT_REPO }}
+          ref: ${{ env.ENGINE_REF }}
+          submodules: true
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $(cat linux-build-deps/apt.txt)
+      - name: Generate soh.o2r
+        run: |
+          cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DSOH_TOOLS_ONLY=ON
+          cmake --build build-cmake --config Release --target GenerateSohOtr -j4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soh.o2r
+          path: soh.o2r
+          retention-days: 3
+
+  otr-mm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MM_REPO }}
+          ref: ${{ env.ENGINE_REF }}
+          submodules: true
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $(cat .github/workflows/apt-deps.txt) libzip-dev zipcmp zipmerge ziptool
+      - name: SDL2 2.30.3
+        run: |
+          mkdir -p deps && cd deps
+          wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.30.3/SDL2-2.30.3.tar.gz
+          tar -xzf SDL2-2.30.3.tar.gz && cd SDL2-2.30.3
+          ./configure --enable-hidapi-libusb >/dev/null && make -j4 >/dev/null && sudo make install >/dev/null
+          sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
+      - name: tinyxml2 10
+        run: |
+          sudo apt-get remove -y libtinyxml2-dev || true
+          cd deps
+          wget -q https://github.com/leethomason/tinyxml2/archive/refs/tags/10.0.0.tar.gz
+          tar -xzf 10.0.0.tar.gz && cd tinyxml2-10.0.0 && mkdir -p build && cd build
+          cmake .. -DCMAKE_POSITION_INDEPENDENT_CODE=ON && make -j4 && sudo make install
+      - uses: ./.github/actions/install-sdl2-net
+      - name: Generate 2ship.o2r
+        run: |
+          cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release
+          cmake --build build-cmake --config Release --target Generate2ShipOtr -j4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 2ship.o2r
+          path: 2ship.o2r
+          retention-days: 3
+
+  # OoT: the game, the Fleet Combo host (built in the same tree so it links the same libultraship), NEI mods.
+  windows-oot:
+    needs: otr-oot
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - run: choco install ninja -y
+      - uses: actions/checkout@v4
+        with:
+          path: combo
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OOT_REPO }}
+          ref: ${{ env.ENGINE_REF }}
+          submodules: true
+          path: oot
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OOT_REPO }}
+          ref: ${{ env.OOT_MODS_REF }}
+          path: oot-mods
+          sparse-checkout: mod-sdk/mods
+      - uses: actions/cache@v4
+        with:
+          path: oot/vcpkg
+          key: oot-vcpkg-${{ hashFiles('oot/CMakeLists.txt', 'oot/libultraship/cmake/**') }}
+          restore-keys: oot-vcpkg-
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: soh.o2r
+          path: oot/build-windows/soh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pillow
+      - name: Add the Fleet Combo host to the tree
+        shell: bash
+        run: |
+          cp -r combo/host oot/fleet-host
+          printf '\n# Fleet Combo host (added by the fleet-combo workflow)\nadd_subdirectory(fleet-host)\n' >> oot/CMakeLists.txt
+      - name: Build Ship of Harkinian (Unbound) + host
+        working-directory: oot
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/oot/vcpkg
+        run: |
+          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DUNBOUND_MOD_POLICY=open
+          cmake --build build-windows --config Release --parallel 4
+          (cd build-windows && cpack)
+          mkdir ..\out
+          Expand-Archive -Path (Get-ChildItem _packages\*.zip | Select-Object -First 1).FullName -DestinationPath ..\out\oot
+          Copy-Item x64\Release\soh.lib ..\out\oot\soh.lib
+          $host_exe = Get-ChildItem -Path build-windows -Recurse -Filter FleetCombo.exe | Select-Object -First 1
+          if (-not $host_exe) { Write-Error "FleetCombo.exe was not built"; exit 1 }
+          New-Item -ItemType Directory -Force -Path ..\out\root | Out-Null
+          Copy-Item $host_exe.FullName ..\out\root\
+      - name: Build the NEI mods for OoT
+        shell: bash
+        run: |
+          rm -rf oot/mod-sdk/mods
+          cp -r oot-mods/mod-sdk/mods oot/mod-sdk/mods
+          cd oot
+          # One mod failing to build against this engine must not sink the rest: report and continue.
+          for m in $(ls mod-sdk/mods); do
+            [ -f "mod-sdk/mods/$m/manifest.json" ] || continue
+            python mod-sdk/build_mods.py --game ../out/oot --soh-lib ../out/oot/soh.lib --no-templates --mod "$m" \
+              || echo "::warning::OoT mod $m did not build"
+          done
+          ls ../out/oot/mods || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-oot
+          path: out
+
+  # MM: the game and its NEI mods (which include Adult Link and the OoT items for Termina).
+  windows-mm:
+    needs: otr-mm
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - run: choco install ninja -y
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MM_REPO }}
+          ref: ${{ env.ENGINE_REF }}
+          submodules: true
+          path: mm
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MM_REPO }}
+          ref: ${{ env.MM_MODS_REF }}
+          path: mm-mods
+          sparse-checkout: mod-sdk/mods
+      - uses: actions/cache@v4
+        with:
+          path: mm/vcpkg
+          key: mm-vcpkg-${{ hashFiles('mm/CMakeLists.txt', 'mm/libultraship/cmake/**') }}
+          restore-keys: mm-vcpkg-
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: 2ship.o2r
+          path: mm/build-windows/mm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pillow
+      - name: Build 2 Ship 2 Harkinian (Unbound)
+        working-directory: mm
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/mm/vcpkg
+        run: |
+          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DS2H_MOD_POLICY=open
+          cmake --build build-windows --config Release --parallel 4
+          (cd build-windows && cpack)
+          mkdir ..\out
+          Expand-Archive -Path (Get-ChildItem _packages\*.zip | Select-Object -First 1).FullName -DestinationPath ..\out\mm
+          $lib = Get-ChildItem -Path build-windows -Recurse -Filter 2ship.lib | Select-Object -First 1
+          Copy-Item $lib.FullName ..\out\mm\2ship.lib
+      - name: Build the NEI mods for MM
+        shell: bash
+        run: |
+          cd mm
+          for m in $(ls ../mm-mods/mod-sdk/mods); do
+            [ -f "../mm-mods/mod-sdk/mods/$m/manifest.json" ] || continue
+            python mod-sdk/build_mods.py --mods-dir ../mm-mods/mod-sdk/mods --game ../out/mm \
+              --import-library ../out/mm/2ship.lib --no-templates --mod "$m" \
+              || echo "::warning::MM mod $m did not build"
+          done
+          ls ../out/mm/mods || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-mm
+          path: out
+
+  package:
+    needs: [windows-oot, windows-mm]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          merge-multiple: true
+          path: parts
+      - name: Assemble FleetCombo/
+        run: |
+          set -e
+          mkdir -p FleetCombo
+          cp -r parts/oot FleetCombo/oot
+          cp -r parts/mm FleetCombo/mm
+          cp parts/root/FleetCombo.exe FleetCombo/
+          # The host links libultraship and its runtime: use OoT's copies (same libultraship commit and options).
+          for f in parts/oot/*.dll; do
+            case "$(basename "$f")" in soh.dll) ;; *) cp "$f" FleetCombo/ ;; esac
+          done
+          cp README.md FleetCombo/README.md
+          rm -f FleetCombo/oot/soh.lib FleetCombo/mm/2ship.lib
+          find FleetCombo -maxdepth 2 | sort
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FleetCombo-windows
+          path: FleetCombo
