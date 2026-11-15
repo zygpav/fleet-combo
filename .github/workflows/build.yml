@@ -259,6 +259,8 @@ jobs:
             case "$(basename "$f")" in soh.dll) ;; *) cp "$f" FleetCombo/ ;; esac
           done
           cp README.md FleetCombo/README.md
+          cp parts/oot/gamecontrollerdb.txt FleetCombo/
+          mkdir -p FleetCombo/mods
           rm -f FleetCombo/oot/soh.lib FleetCombo/mm/2ship.lib
           find FleetCombo -maxdepth 2 | sort
       - uses: actions/upload-artifact@v4

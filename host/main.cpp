@@ -21,6 +21,7 @@
 #include <fast/Fast3dWindow.h>
 #include <libultraship/controller/controldeck/ControlDeck.h>
 #include <spdlog/spdlog.h>
+#include <SDL2/SDL.h>
 
 #include <array>
 #include <cstdio>
@@ -96,6 +97,15 @@ struct PendingSwitch {
 };
 std::optional<PendingSwitch> sPending;
 
+void ShowProblem(const std::string& text) {
+    SPDLOG_ERROR("[FleetCombo] {}", text);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Zelda Fleet Combo", text.c_str(), nullptr);
+}
+
+// Game messages that arrive through "Log" before the window exists, e.g. why Attach refused.
+std::string sLastGameError;
+
+
 Game* FindGame(const char* name) {
     if (name == nullptr) {
         return nullptr;
@@ -163,6 +173,7 @@ void HostLog(const char* game, FleetLogLevel level, const char* message) {
             break;
         default:
             SPDLOG_ERROR("[{}] {}", who, text);
+            sLastGameError = text;
             break;
     }
 }
@@ -178,14 +189,15 @@ void HostRequestSwitch(const char* fromGame, const FleetDestination* destination
         to = OtherGame(from); // "game" left empty means "the other world"
     }
     if (!to->attached) {
-        SPDLOG_ERROR("[FleetCombo] {} asked to switch to {}, which is not installed", from->name, to->name);
+        ShowProblem(from->name + " asked to travel to " + to->name + ", but " + to->name +
+                    " did not start (see the message at launch and logs/).");
         return;
     }
     sPending = PendingSwitch{ to, destination != nullptr ? destination->entrance : 0,
                               destination != nullptr && destination->payloadJson != nullptr
                                   ? destination->payloadJson
                                   : std::string{} };
-    SPDLOG_INFO("[FleetCombo] {} -> {} ({})", from->name, to->name, sPending->payload);
+    SPDLOG_WARN("[FleetCombo] Travel requested: {} -> {} ({})", from->name, to->name, sPending->payload);
 }
 
 void Activate(Game* game) {
@@ -200,6 +212,11 @@ FleetDestination ArrivalOf(Game& game) {
 
 void HostFrameEnd(const char* gameName) {
     Game* self = FindGame(gameName);
+    static bool sSeen[2] = { false, false };
+    if (self != nullptr && !sSeen[self - sGames.data()]) {
+        sSeen[self - sGames.data()] = true;
+        SPDLOG_WARN("[FleetCombo] {} is running inside Fleet Combo (first frame)", self->name);
+    }
     if (self == nullptr || self != sActive || !sPending) {
         return;
     }
@@ -209,6 +226,8 @@ void HostFrameEnd(const char* gameName) {
     if (target == self) {
         return;
     }
+    SPDLOG_WARN("[FleetCombo] Switching {} -> {} ({})", self->name, target->name,
+                target->started ? "resume" : "first start");
     target->arrivalEntrance = pending.entrance;
     target->arrivalPayload = pending.payload;
 
@@ -276,7 +295,7 @@ bool LoadGame(Game& game) {
     const fs::path folder = sRoot / game.folder;
     const fs::path modulePath = folder / game.moduleFile;
     if (!fs::exists(modulePath)) {
-        SPDLOG_ERROR("[FleetCombo] Missing {}", modulePath.string());
+        ShowProblem("Missing " + modulePath.string());
         return false;
     }
     game.module = LoadModule(modulePath);
@@ -307,8 +326,10 @@ bool LoadGame(Game& game) {
     // Attach runs with the game's own folder as working directory, so relative lookups land in its install.
     game.attached = game.Attach(&info);
     if (!game.attached) {
-        SPDLOG_ERROR("[FleetCombo] {} cannot boot from {}. Run its own launcher once to extract your ROM.", game.name,
-                     install);
+        ShowProblem(game.name + " cannot start from " + install + ":\n" +
+                    (sLastGameError.empty() ? std::string("run its own launcher once to extract your ROM.")
+                                            : sLastGameError));
+        sLastGameError.clear();
         return false;
     }
     Game* self = &game;
@@ -321,14 +342,21 @@ bool LoadGame(Game& game) {
             sQuit = true;
         },
         kGameStackSize);
-    SPDLOG_INFO("[FleetCombo] Attached {} from {}", game.name, install);
+    SPDLOG_WARN("[FleetCombo] Attached {} from {}", game.name, install);
     return true;
 }
 
 Ship::Context* CreateHostContext() {
     Ship::Context* context = Ship::Context::CreateUninitializedInstance("Zelda Fleet Combo", "fleetcombo",
                                                                         "fleetcombo.json");
-    context->InitLogging();
+    context->InitLogging(spdlog::level::info, spdlog::level::info);
+    // spdlog is header-only: this executable has its own default logger. Point it at the Context's file logger,
+    // or everything the host logs (and every message the games send through "Log") is lost.
+    if (auto logger = context->GetLogger()) {
+        spdlog::set_default_logger(logger);
+        spdlog::set_level(spdlog::level::info);
+        spdlog::flush_on(spdlog::level::info);
+    }
     context->InitConfiguration();
     context->InitConsoleVariables();
     auto controlDeck = std::make_shared<LUS::ControlDeck>(std::vector<CONTROLLERBUTTONS_T>({
