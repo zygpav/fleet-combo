@@ -2,6 +2,20 @@
 
 What changed, what to test, what's waiting on you. Newest first.
 
+## ✅ Latest build: green (all stages so far)
+
+**Download:** https://github.com/zygpav/fleet-combo/actions/runs/43760985154 → Artifacts → `FleetCombo-windows`
+
+* Both games built from the `fleet-combo` branches of your forks (shared hearts, vanilla data, era lock,
+  warp songs back to Hyrule).
+* All 82 OoT mods and all 78 MM mods built, including `mm_collectables` with the Song of Soaring → Termina change.
+* No compiler warnings in any file I changed.
+
+**Test order that tells me the most:**
+1. Load your existing file → walk into the Mask Shop. If MM doesn't load, a popup now says why. Send me the log.
+2. New file → Randomizer → Generate → Start. Check your hearts, then go to Termina via the Mask Shop.
+3. In Termina, pick up a Piece of Heart, return through the Clock Tower door, and check your hearts in Hyrule.
+
 ## How to get a build
 
 Actions → **Build Fleet Combo (Windows)** → the newest green run → download `FleetCombo-windows`.
