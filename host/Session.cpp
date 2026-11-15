@@ -468,6 +468,13 @@ bool GenerateRandomizer(int slot) {
         SPDLOG_ERROR("[FleetCombo] Seed generation failed: {}", e.what());
         sGenerationState = kFailed;
     }
+    // Majora's Mask prepares its seed on a scratch save context: "Finish" puts the live one back.
+    if (const GameHandle* mm = FindGame("mm")) {
+        AsGame(*mm, [&] {
+            mm->Request("Finish");
+            return 0;
+        });
+    }
     // The file select was running as OoT: give the thread back to it.
     Ship::GameRegistry::SetActive("oot");
     return true;
