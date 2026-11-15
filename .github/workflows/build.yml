@@ -13,7 +13,7 @@ on:
         default: fleet-combo
       mods_ref_oot:
         description: Shipwright branch that holds the NEI mod sources
-        default: unbound-mod-nei
+        default: fleet-combo-mods
       mods_ref_mm:
         description: 2ship2harkinian branch that holds the NEI mod sources
         default: 2ship-unbound-mod-nei
@@ -22,7 +22,7 @@ env:
   OOT_REPO: ${{ github.repository_owner }}/Shipwright
   MM_REPO: ${{ github.repository_owner }}/2ship2harkinian
   ENGINE_REF: ${{ inputs.engine_ref || 'fleet-combo' }}
-  OOT_MODS_REF: ${{ inputs.mods_ref_oot || 'unbound-mod-nei' }}
+  OOT_MODS_REF: ${{ inputs.mods_ref_oot || 'fleet-combo-mods' }}
   MM_MODS_REF: ${{ inputs.mods_ref_mm || '2ship-unbound-mod-nei' }}
 
 jobs:
