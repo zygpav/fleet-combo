@@ -108,7 +108,7 @@ jobs:
           ref: ${{ env.OOT_MODS_REF }}
           path: oot-mods
           sparse-checkout: mod-sdk/mods
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: oot/vcpkg
           key: oot-vcpkg-${{ hashFiles('oot/CMakeLists.txt', 'oot/libultraship/cmake/**') }}
@@ -136,7 +136,7 @@ jobs:
         run: |
           cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DUNBOUND_MOD_POLICY=open
           cmake --build build-windows --config Release --parallel 4
-          (cd build-windows && cpack)
+          Push-Location build-windows; cpack; Pop-Location
           mkdir ..\out
           Expand-Archive -Path (Get-ChildItem _packages\*.zip | Select-Object -First 1).FullName -DestinationPath ..\out\oot
           Copy-Item x64\Release\soh.lib ..\out\oot\soh.lib
@@ -144,6 +144,12 @@ jobs:
           if (-not $host_exe) { Write-Error "FleetCombo.exe was not built"; exit 1 }
           New-Item -ItemType Directory -Force -Path ..\out\root | Out-Null
           Copy-Item $host_exe.FullName ..\out\root\
+      - name: Save the vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: oot/vcpkg
+          key: oot-vcpkg-${{ hashFiles('oot/CMakeLists.txt', 'oot/libultraship/cmake/**') }}-${{ github.run_id }}
       - name: Build the NEI mods for OoT
         shell: bash
         run: |
@@ -181,7 +187,7 @@ jobs:
           ref: ${{ env.MM_MODS_REF }}
           path: mm-mods
           sparse-checkout: mod-sdk/mods
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: mm/vcpkg
           key: mm-vcpkg-${{ hashFiles('mm/CMakeLists.txt', 'mm/libultraship/cmake/**') }}
@@ -204,11 +210,17 @@ jobs:
         run: |
           cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DS2H_MOD_POLICY=open
           cmake --build build-windows --config Release --parallel 4
-          (cd build-windows && cpack)
+          Push-Location build-windows; cpack; Pop-Location
           mkdir ..\out
           Expand-Archive -Path (Get-ChildItem _packages\*.zip | Select-Object -First 1).FullName -DestinationPath ..\out\mm
           $lib = Get-ChildItem -Path build-windows -Recurse -Filter 2ship.lib | Select-Object -First 1
           Copy-Item $lib.FullName ..\out\mm\2ship.lib
+      - name: Save the vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: mm/vcpkg
+          key: mm-vcpkg-${{ hashFiles('mm/CMakeLists.txt', 'mm/libultraship/cmake/**') }}-${{ github.run_id }}
       - name: Build the NEI mods for MM
         shell: bash
         run: |
