@@ -342,6 +342,7 @@ bool LoadGame(Game& game) {
             sQuit = true;
         },
         kGameStackSize);
+    FleetCombo::SessionAddGame({ game.name.c_str(), game.GetFunction, &game.started });
     SPDLOG_WARN("[FleetCombo] Attached {} from {}", game.name, install);
     return true;
 }

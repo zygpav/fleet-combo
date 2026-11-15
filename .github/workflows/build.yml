@@ -10,7 +10,7 @@ on:
     inputs:
       engine_ref:
         description: Branch of both game forks to build (engine + Fleet integration)
-        default: unbound-modapi
+        default: fleet-combo
       mods_ref_oot:
         description: Shipwright branch that holds the NEI mod sources
         default: unbound-mod-nei
@@ -21,7 +21,7 @@ on:
 env:
   OOT_REPO: ${{ github.repository_owner }}/Shipwright
   MM_REPO: ${{ github.repository_owner }}/2ship2harkinian
-  ENGINE_REF: ${{ inputs.engine_ref || 'unbound-modapi' }}
+  ENGINE_REF: ${{ inputs.engine_ref || 'fleet-combo' }}
   OOT_MODS_REF: ${{ inputs.mods_ref_oot || 'unbound-mod-nei' }}
   MM_MODS_REF: ${{ inputs.mods_ref_mm || '2ship-unbound-mod-nei' }}
 
