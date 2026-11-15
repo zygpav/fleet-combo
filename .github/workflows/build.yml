@@ -108,6 +108,13 @@ jobs:
           ref: ${{ env.OOT_MODS_REF }}
           path: oot-mods
           sparse-checkout: mod-sdk/mods
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: sccache
+          max-size: 3G
+          key: sccache-oot-${{ github.run_id }}
+          restore-keys: sccache-oot-
       - uses: actions/cache/restore@v4
         with:
           path: oot/vcpkg
@@ -134,7 +141,7 @@ jobs:
         env:
           VCPKG_ROOT: ${{ github.workspace }}/oot/vcpkg
         run: |
-          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DUNBOUND_MOD_POLICY=open
+          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DUNBOUND_MOD_POLICY=open
           cmake --build build-windows --config Release --parallel 4
           Push-Location build-windows; cpack; Pop-Location
           mkdir ..\out
@@ -187,6 +194,13 @@ jobs:
           ref: ${{ env.MM_MODS_REF }}
           path: mm-mods
           sparse-checkout: mod-sdk/mods
+      - name: Compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: sccache
+          max-size: 3G
+          key: sccache-mm-${{ github.run_id }}
+          restore-keys: sccache-mm-
       - uses: actions/cache/restore@v4
         with:
           path: mm/vcpkg
@@ -208,7 +222,7 @@ jobs:
         env:
           VCPKG_ROOT: ${{ github.workspace }}/mm/vcpkg
         run: |
-          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DS2H_MOD_POLICY=open
+          cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DS2H_MOD_POLICY=open
           cmake --build build-windows --config Release --parallel 4
           Push-Location build-windows; cpack; Pop-Location
           mkdir ..\out
