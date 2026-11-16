@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <fstream>
 #include <map>
@@ -313,8 +314,36 @@ json GenerateSeed() {
     SPDLOG_WARN("[FleetCombo] Generating seed {}", masterSeed);
 
     std::map<std::string, GameDump> dumps;
+    json starting = json::object();
     for (const auto& game : sGames) {
         PrepareGame(game, masterSeed, dumps[game.name]);
+        // Every combined file starts with Song of Soaring in both worlds: it is how Link travels between them.
+        GameDump& data = dumps[game.name];
+        starting[game.name] = json::array();
+        for (const auto& item : data.dump.at("items")) {
+            std::string name = item.at("name");
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+            if (lower.find("soaring") != std::string::npos) {
+                starting[game.name].push_back(name);
+                break;
+            }
+        }
+        if (!data.settings.contains("settings")) {
+            data.settings["settings"] = json::object();
+        }
+        json& list = data.settings["settings"]["fleet.startingItems"];
+        if (!list.is_array()) {
+            list = json::array();
+        }
+        for (const auto& name : starting[game.name]) {
+            list.push_back(name);
+        }
+        AsGame(game, [&] {
+            game.Request("RestoreSettings", data.settings);
+            return 0;
+        });
+        SPDLOG_WARN("[FleetCombo] {} starts with {}", game.name, starting[game.name].dump());
         SearchVanilla(game, dumps[game.name]);
         SPDLOG_WARN("[FleetCombo] {}: {} checks, {} reachable with vanilla items, {} junk spots for NEI items",
                     game.name, dumps[game.name].placements.size(), dumps[game.name].vanillaReachable.size(),
@@ -399,7 +428,7 @@ json GenerateSeed() {
                   { "foreign", json::array() },
                   { "entrances", json::object() },
                   { "fleetCombo", { { "mode", "vanilla+nei" }, { "pairs", pairs }, { "byKey", byKey },
-                                    { "nei", neiPlaced } } } };
+                                    { "nei", neiPlaced }, { "starting", starting } } } };
     for (auto& [name, data] : dumps) {
         json game = data.settings;
         seed["entrances"][name] = game.value("entrances", json::array());
@@ -497,6 +526,13 @@ bool BeginCreatedSave(int slot) {
     session.slot = slot;
     session.seed = std::move(generated->second);
     sGenerated.erase(generated);
+    // The starting items arrive like any delivery, in each world on its first frame there.
+    const json starting = session.seed.value("fleetCombo", json::object()).value("starting", json::object());
+    for (const auto& [game, items] : starting.items()) {
+        for (const auto& item : items) {
+            session.deliveries[game].push_back({ { "id", "start:" + item.get<std::string>() }, { "item", item } });
+        }
+    }
     Activate(std::move(session));
     return true;
 }
