@@ -2,19 +2,19 @@
 
 What changed, what to test, what's waiting on you. Newest first.
 
-## ✅ Latest build: green (all stages so far)
+## ✅ Latest build: green
 
-**Download:** https://github.com/zygpav/fleet-combo/actions/runs/43760985154 → Artifacts → `FleetCombo-windows`
+**Download:** https://github.com/zygpav/fleet-combo/actions/runs/43963594276 → Artifacts → `FleetCombo-windows`
 
-* Both games built from the `fleet-combo` branches of your forks (shared hearts, vanilla data, era lock,
-  warp songs back to Hyrule).
-* All 82 OoT mods and all 78 MM mods built, including `mm_collectables` with the Song of Soaring → Termina change.
-* No compiler warnings in any file I changed.
+Includes: MM save-crash fix, MM's real opening on a new Termina file, Song of Soaring from the start
+(travel song in both worlds), doors no longer teleport, Link crosses as himself (age + form), and any Link
+uses every item.
 
-**Test order that tells me the most:**
-1. Load your existing file → walk into the Mask Shop. If MM doesn't load, a popup now says why. Send me the log.
-2. New file → Randomizer → Generate → Start. Check your hearts, then go to Termina via the Mask Shop.
-3. In Termina, pick up a Piece of Heart, return through the Clock Tower door, and check your hearts in Hyrule.
+**Test list** (needs a NEW combined file: OoT file select → Randomizer → Generate → Start):
+1. Play Song of Soaring in Hyrule → owl menu, last page "Termina (Clock Town)".
+2. The first Termina visit should play MM's opening (Skull Kid, Deku curse).
+3. Song of Soaring in Termina → "Hyrule".
+4. Cross as adult Link → you're adult Link in Termina. Try an adult item there.
 
 ## How to get a build
 
