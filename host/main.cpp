@@ -373,10 +373,16 @@ Ship::Context* CreateHostContext() {
         BTN_CUSTOM_OCARINA_PITCH_DOWN,
     }));
     context->InitControlDeck(controlDeck);
+    context->InitCrashHandler();
+    SPDLOG_WARN("[FleetCombo] Starting (controls ready)");
     // The host mounts nothing itself: each game registers its own ResourceManager in the GameRegistry.
-    context->InitResourceManager({}, {}, 3, true);
+    // An empty list would make libultraship mount the whole install folder (both games) as one archive,
+    // so name an archive that does not exist instead.
+    context->InitResourceManager({ (sRoot / "fleetcombo.o2r").string() }, {}, 3, true);
+    SPDLOG_WARN("[FleetCombo] Resource manager ready");
     context->InitConsole();
     context->InitWindow(std::make_shared<Fast::Fast3dWindow>(std::vector<std::shared_ptr<Ship::GuiWindow>>{}));
+    SPDLOG_WARN("[FleetCombo] Window ready");
     return context;
 }
 
@@ -407,8 +413,10 @@ int HostMain() {
 
     bool any = false;
     for (auto& game : sGames) {
+        SPDLOG_WARN("[FleetCombo] Loading {}/{}", game.folder, game.moduleFile);
         any |= LoadGame(game);
     }
+    SPDLOG_WARN("[FleetCombo] Starting Ocarina of Time");
     if (!sGames[0].attached) {
         SPDLOG_CRITICAL("[FleetCombo] Ocarina of Time is required: the adventure starts in Hyrule.");
         return 1;
