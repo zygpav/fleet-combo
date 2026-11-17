@@ -1,6 +1,7 @@
 #include "Session.h"
 
 #include <ship/GameRegistry.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -344,6 +345,14 @@ json GenerateSeed() {
             return 0;
         });
         SPDLOG_WARN("[FleetCombo] {} starts with {}", game.name, starting[game.name].dump());
+        if (starting[game.name].empty()) {
+            // Never strand Link in one world: without a travel song here, the doors travel instead.
+            SPDLOG_ERROR("[FleetCombo] {} has no Song of Soaring item; turning the door portals on there", game.name);
+            AsGame(game, [&] {
+                CVarSetInteger("gFleetCombo.DoorPortals", 1);
+                return 0;
+            });
+        }
         SearchVanilla(game, dumps[game.name]);
         SPDLOG_WARN("[FleetCombo] {}: {} checks, {} reachable with vanilla items, {} junk spots for NEI items",
                     game.name, dumps[game.name].placements.size(), dumps[game.name].vanillaReachable.size(),
@@ -355,6 +364,16 @@ json GenerateSeed() {
     json byKey = json::object();
     // NEI items: key -> game -> pool item name. Each is placed once; the pairing hands the twin to the other world.
     std::map<std::string, std::map<std::string, std::string>> nei;
+    // Keys that stand for a native item of either game (MM's masks in Hyrule, OoT's items in Termina): those items
+    // already sit in their vanilla spots, so their copies are not shuffled as NEI items.
+    std::set<std::string> nativeKeys;
+    for (auto& [name, data] : dumps) {
+        for (const auto& item : data.dump.at("items")) {
+            if (!item.contains("textKey") && item.contains("pairKey")) {
+                nativeKeys.insert(item.at("pairKey").get<std::string>());
+            }
+        }
+    }
     for (auto& [name, data] : dumps) {
         pairs[name] = json::object();
         byKey[name] = json::object();
@@ -370,8 +389,8 @@ json GenerateSeed() {
         for (const auto& entry : data.dump.at("pool")) {
             const std::string item = entry.at("name");
             auto key = keyOfItem.find(item);
-            if (key != keyOfItem.end() && item.size() > 0 && entry.contains("name") && !IsReplicaOrForeign(key->second) &&
-                data.dump.at("items").is_array()) {
+            if (key != keyOfItem.end() && !item.empty() && !IsReplicaOrForeign(key->second) &&
+                !nativeKeys.contains(key->second)) {
                 // Only mod items carry a textKey; vanilla items only carry pairKeys (which are replicas).
                 bool isMod = false;
                 for (const auto& def : data.dump.at("items")) {
