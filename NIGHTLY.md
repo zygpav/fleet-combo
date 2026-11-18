@@ -4,7 +4,7 @@ What changed, what to test, what's waiting on you. Newest first.
 
 ## ✅ Latest build: green
 
-**Download:** https://github.com/zygpav/fleet-combo/actions/runs/44193401696 → Artifacts → `FleetCombo-windows`
+**Download:** https://github.com/zygpav/fleet-combo/actions/runs/44374733762 → Artifacts → `FleetCombo-windows`
 
 Includes: tidier F1 menu (one NEI section: Items & Masks, Equipment, Companions, Gameplay, Other; mod test tools under Dev Tools → Mod Tools), Save Editor Fleet Combo tab fixed (equipment + Where column), Song of Soaring always known in both worlds (any file), Save Editor "Fleet Combo" tab, code-review fixes (form needs its mask, no "No Item" checks, MM masks not duplicated, Soaring safety net), MM save-crash fix, MM's real opening on a new Termina file, Song of Soaring from the start
 (travel song in both worlds), doors no longer teleport, Link crosses as himself (age + form), and any Link
