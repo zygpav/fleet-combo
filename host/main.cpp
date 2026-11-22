@@ -12,6 +12,7 @@
 
 #include "Fiber.h"
 #include "Session.h"
+#include "TestScript.h"
 
 #include <fleet/FleetGameApi.h>
 #include <ship/Context.h>
@@ -212,6 +213,9 @@ FleetDestination ArrivalOf(Game& game) {
 
 void HostFrameEnd(const char* gameName) {
     Game* self = FindGame(gameName);
+    if (self != nullptr && self == sActive) {
+        FleetCombo::TestTick(self->name.c_str());
+    }
     static bool sSeen[2] = { false, false };
     if (self != nullptr && !sSeen[self - sGames.data()]) {
         sSeen[self - sGames.data()] = true;
@@ -283,6 +287,9 @@ void* HostFunction(const char* name) {
         return reinterpret_cast<void*>(HostDrawForeignItem);
     }
     // Session services (shared hearts and inventory, deliveries, seed): Session.cpp.
+    if (void* service = FleetCombo::TestFunction(name)) {
+        return service;
+    }
     if (void* service = FleetCombo::SessionFunction(name)) {
         return service;
     }
@@ -410,6 +417,7 @@ int HostMain() {
     Fiber::InitMainFiber();
     CreateHostContext();
     FleetCombo::SessionInit(sRoot);
+    FleetCombo::TestInit(sRoot);
 
     bool any = false;
     for (auto& game : sGames) {
