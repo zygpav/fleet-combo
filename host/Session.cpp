@@ -362,8 +362,10 @@ json GenerateSeed() {
     // Item pairing tables: game -> item name -> key, and game -> key -> item name.
     json pairs = json::object();
     json byKey = json::object();
-    // NEI items: key -> game -> pool item name. Each is placed once; the pairing hands the twin to the other world.
+    // NEI items: key -> game -> pool item name. The pairing hands the twin to the other world, so a key is placed in
+    // one world per copy; progressive items and pieces (Ultrahand, Roc's Feather, upgrades) have several copies.
     std::map<std::string, std::map<std::string, std::string>> nei;
+    std::map<std::string, size_t> neiCopies;
     // Keys that stand for a native item of either game (MM's masks in Hyrule, OoT's items in Termina): those items
     // already sit in their vanilla spots, so their copies are not shuffled as NEI items.
     std::set<std::string> nativeKeys;
@@ -386,6 +388,7 @@ json GenerateSeed() {
                 keyOfItem[item.at("name").get<std::string>()] = key;
             }
         }
+        std::map<std::string, size_t> copiesHere;
         for (const auto& entry : data.dump.at("pool")) {
             const std::string item = entry.at("name");
             auto key = keyOfItem.find(item);
@@ -401,8 +404,12 @@ json GenerateSeed() {
                 }
                 if (isMod) {
                     nei[key->second][name] = item;
+                    copiesHere[key->second]++;
                 }
             }
+        }
+        for (const auto& [key, count] : copiesHere) {
+            neiCopies[key] = std::max(neiCopies[key], count);
         }
     }
 
@@ -413,6 +420,7 @@ json GenerateSeed() {
     }
     json neiPlaced = json::array();
     for (const auto& [key, owners] : nei) {
+      for (size_t copy = 0; copy < std::max<size_t>(neiCopies[key], 1); ++copy) {
         std::vector<std::string> candidates;
         for (const auto& [game, item] : owners) {
             if (!free[game].empty()) {
@@ -421,13 +429,14 @@ json GenerateSeed() {
         }
         if (candidates.empty()) {
             SPDLOG_WARN("[FleetCombo] No junk spot left for NEI item {}", key);
-            continue;
+            break;
         }
         const std::string game = candidates[std::uniform_int_distribution<size_t>(0, candidates.size() - 1)(rng)];
         const std::string check = free[game].back();
         free[game].pop_back();
         dumps[game].placements[check] = owners.at(game);
         neiPlaced.push_back({ { "key", key }, { "game", game }, { "check", check }, { "item", owners.at(game) } });
+      }
     }
     SPDLOG_WARN("[FleetCombo] Placed {} NEI items", neiPlaced.size());
 
