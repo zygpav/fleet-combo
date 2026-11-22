@@ -198,7 +198,8 @@ struct GameDump {
     json dump;
     json placements = json::object();
     std::set<std::string> vanillaReachable;
-    std::vector<std::string> junkChecks;
+    std::vector<std::string> junkChecks; // handed out from the back: early (reachable) checks are last
+    size_t lateJunk = 0;                 // how many at the front the logic search did not reach
 };
 
 // Runs a game's randomizer services as that game, then hands the thread back.
@@ -299,13 +300,31 @@ void SearchVanilla(const GameHandle& game, GameDump& out) {
     for (const auto& [name, price] : prices.items()) {
         priced.insert(name);
     }
+    // Every junk check can hold an NEI item: with every item in its vanilla place the whole vanilla game is
+    // reachable, so no NEI item ever stands behind another. The logic search only orders them: checks it reaches
+    // come last, so they are handed out first and NEI items turn up early. (Its view is narrow under the default
+    // randomizer settings, closed forest and unshuffled shops, so it cannot be the only source.)
+    std::vector<std::string> late;
+    std::vector<std::string> early;
+    std::map<std::string, int> categories;
     for (const auto& check : out.dump.at("checks")) {
         const std::string name = check.at("name");
-        if (check.value("vanillaCategory", "") == "junk" && out.vanillaReachable.contains(name) &&
-            !priced.contains(name)) {
-            out.junkChecks.push_back(name);
+        const std::string category = check.value("vanillaCategory", "");
+        categories[category]++;
+        if (category != "junk" || priced.contains(name)) {
+            continue;
         }
+        (out.vanillaReachable.contains(name) ? early : late).push_back(name);
     }
+    std::string histogram;
+    for (const auto& [category, count] : categories) {
+        histogram += (histogram.empty() ? "" : ", ") + (category.empty() ? std::string("?") : category) + " " +
+                     std::to_string(count);
+    }
+    SPDLOG_WARN("[FleetCombo] {} vanilla items by category: {}", game.name, histogram);
+    out.junkChecks = std::move(late);
+    out.lateJunk = out.junkChecks.size();
+    out.junkChecks.insert(out.junkChecks.end(), early.begin(), early.end());
 }
 
 json GenerateSeed() {
@@ -416,7 +435,10 @@ json GenerateSeed() {
     std::map<std::string, std::vector<std::string>> free;
     for (auto& [name, data] : dumps) {
         free[name] = data.junkChecks;
-        std::shuffle(free[name].begin(), free[name].end(), rng);
+        // Shuffle each group on its own: the reached checks stay at the back.
+        const auto split = free[name].begin() + static_cast<std::ptrdiff_t>(std::min(data.lateJunk, free[name].size()));
+        std::shuffle(free[name].begin(), split, rng);
+        std::shuffle(split, free[name].end(), rng);
     }
     json neiPlaced = json::array();
     for (const auto& [key, owners] : nei) {
