@@ -327,6 +327,35 @@ void SearchVanilla(const GameHandle& game, GameDump& out) {
     out.junkChecks.insert(out.junkChecks.end(), early.begin(), early.end());
 }
 
+// Randomizer settings that would move vanilla items the placements cannot pin: OoT's dungeon rewards (shuffled to
+// boss rooms by default) and Link's Pocket (a free reward at the start). Everything else stays as the player set it.
+void PinVanillaWorld(const GameHandle& game) {
+    static const std::map<std::string, std::map<std::string, int>> kPinned = {
+        { "oot", { { "gRandoSettings.ShuffleDungeonReward", 0 }, { "gRandoSettings.LinksPocket", 3 } } },
+    };
+    auto pinned = kPinned.find(game.name);
+    if (pinned == kPinned.end()) {
+        return;
+    }
+    AsGame(game, [&] {
+        if (game.started == nullptr || !*game.started) {
+            game.Request("InitRandoHeadless");
+        }
+        auto settings = game.Request("DumpSettings");
+        if (!settings) {
+            return 0;
+        }
+        if (!settings->contains("settings") || !(*settings)["settings"].is_object()) {
+            (*settings)["settings"] = json::object();
+        }
+        for (const auto& [key, value] : pinned->second) {
+            (*settings)["settings"][key] = value;
+        }
+        game.Request("RestoreSettings", *settings);
+        return 0;
+    });
+}
+
 json GenerateSeed() {
     std::random_device device;
     const uint32_t masterSeed = (static_cast<uint32_t>(device()) & 0x7FFFFFFF) | 1u;
@@ -336,6 +365,7 @@ json GenerateSeed() {
     std::map<std::string, GameDump> dumps;
     json starting = json::object();
     for (const auto& game : sGames) {
+        PinVanillaWorld(game);
         PrepareGame(game, masterSeed, dumps[game.name]);
         // Every combined file starts with Song of Soaring in both worlds: it is how Link travels between them.
         GameDump& data = dumps[game.name];
