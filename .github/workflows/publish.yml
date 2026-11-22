@@ -29,6 +29,8 @@ jobs:
         run: |
           set -e
           cd FleetCombo
+          # Debug symbols are over GitHub's 100 MB file limit.
+          find . -name '*.pdb' -delete
           git init -q -b nightly-bin
           git config user.name "fleet-combo-ci"
           git config user.email "ci@users.noreply.github.com"
