@@ -1,0 +1,108 @@
+diff --git a/include/ship/window/gui/Gui.h b/include/ship/window/gui/Gui.h
+index 4b6d76c..14416fd 100644
+--- a/include/ship/window/gui/Gui.h
++++ b/include/ship/window/gui/Gui.h
+@@ -241,6 +241,12 @@ class Gui {
+     ImVec2 mTemporaryWindowPos; ///< Scratchpad position used when repositioning windows.
+     ImGuiIO* mImGuiIo;          ///< Pointer to the active ImGuiIO context.
+     std::map<std::string, std::shared_ptr<GuiWindow>> mGuiWindows; ///< Registered window map (name → window).
++    /** @brief Fleet: the game each window belongs to (empty: added outside any game), by mGuiWindows key. */
++    std::map<std::string, std::string> mGuiWindowOwners;
++    /** @brief Fleet: the game running on this thread, or empty. */
++    static std::string WindowOwner();
++    /** @brief Fleet: mGuiWindows key of a window: the name, prefixed by its game when it has one. */
++    static std::string WindowKey(const std::string& owner, const std::string& name);
+ 
+   private:
+     bool mNeedsConsoleVariableSave;
+diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
+index 37c1217..69fad71 100644
+--- a/src/ship/window/gui/Gui.cpp
++++ b/src/ship/window/gui/Gui.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include "ship/config/Config.h"
+ #include "ship/Context.h"
++#include "ship/GameRegistry.h"
+ #include "ship/config/ConsoleVariable.h"
+ #include "ship/resource/File.h"
+ #include <stb_image.h>
+@@ -283,7 +284,14 @@ void Gui::DrawMenu() {
+         GetMenu()->Draw();
+     }
+ 
++    // Fleet: several games share this Gui. A window belongs to the game that added it and only runs while that game
++    // does (its code reads that game's state); windows added outside any game always run.
++    const std::string activeOwner = WindowOwner();
+     for (auto& windowIter : mGuiWindows) {
++        const auto owner = mGuiWindowOwners.find(windowIter.first);
++        if (owner != mGuiWindowOwners.end() && !owner->second.empty() && owner->second != activeOwner) {
++            continue;
++        }
+         windowIter.second->Update();
+         windowIter.second->Draw();
+     }
+@@ -362,13 +370,25 @@ void Gui::SaveConsoleVariablesNextFrame() {
+     mNeedsConsoleVariableSave = true;
+ }
+ 
++std::string Gui::WindowOwner() {
++    const GameServices* game = GameRegistry::GetCurrent();
++    return game != nullptr ? game->Name : std::string();
++}
++
++std::string Gui::WindowKey(const std::string& owner, const std::string& name) {
++    return owner.empty() ? name : owner + "\x1f" + name;
++}
++
+ void Gui::AddGuiWindow(std::shared_ptr<GuiWindow> guiWindow) {
+-    if (mGuiWindows.contains(guiWindow->GetName())) {
++    const std::string owner = WindowOwner();
++    const std::string key = WindowKey(owner, guiWindow->GetName());
++    if (mGuiWindows.contains(key)) {
+         SPDLOG_ERROR("ImGui::AddGuiWindow: Attempting to add duplicate window name {}", guiWindow->GetName());
+         return;
+     }
+ 
+-    mGuiWindows[guiWindow->GetName()] = guiWindow;
++    mGuiWindows[key] = guiWindow;
++    mGuiWindowOwners[key] = owner;
+     guiWindow->Init();
+ }
+ 
+@@ -377,19 +397,31 @@ void Gui::RemoveGuiWindow(std::shared_ptr<GuiWindow> guiWindow) {
+ }
+ 
+ void Gui::RemoveGuiWindow(const std::string& name) {
++    const std::string key = WindowKey(WindowOwner(), name);
++    if (mGuiWindows.erase(key) > 0) {
++        mGuiWindowOwners.erase(key);
++        return;
++    }
+     mGuiWindows.erase(name);
++    mGuiWindowOwners.erase(name);
+ }
+ 
+ void Ship::Gui::RemoveAllGuiWindows() {
+     mGuiWindows.clear();
++    mGuiWindowOwners.clear();
+ }
+ 
+ std::shared_ptr<GuiWindow> Gui::GetGuiWindow(const std::string& name) {
+-    if (mGuiWindows.contains(name)) {
+-        return mGuiWindows[name];
+-    } else {
+-        return nullptr;
++    // The current game's own window first, then one added outside any game.
++    const std::string owner = WindowOwner();
++    if (!owner.empty()) {
++        auto own = mGuiWindows.find(WindowKey(owner, name));
++        if (own != mGuiWindows.end()) {
++            return own->second;
++        }
+     }
++    auto shared = mGuiWindows.find(name);
++    return shared != mGuiWindows.end() ? shared->second : nullptr;
+ }
+ 
+ std::shared_ptr<GameOverlay> Gui::GetGameOverlay() {

@@ -102,6 +102,9 @@ jobs:
           ref: ${{ env.ENGINE_REF }}
           submodules: true
           path: oot
+      - name: Fleet patches to libultraship
+        shell: bash
+        run: for p in combo/patches/libultraship/*.patch; do git -C oot/libultraship apply --whitespace=nowarn "$PWD/$p"; done
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.OOT_REPO }}
@@ -184,10 +187,16 @@ jobs:
       - run: choco install ninja -y
       - uses: actions/checkout@v4
         with:
+          path: combo
+      - uses: actions/checkout@v4
+        with:
           repository: ${{ env.MM_REPO }}
           ref: ${{ env.ENGINE_REF }}
           submodules: true
           path: mm
+      - name: Fleet patches to libultraship
+        shell: bash
+        run: for p in combo/patches/libultraship/*.patch; do git -C mm/libultraship apply --whitespace=nowarn "$PWD/$p"; done
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.MM_REPO }}

@@ -266,6 +266,38 @@ bool HostDrawForeignItem(FleetItemDraw* request) {
     return owner->DrawItem(request);
 }
 
+// A panel of one game's own menu (its NEI settings, its inventory), drawn from either game's menu so both worlds'
+// options sit side by side. Runs as that game, so its settings, resources and saves are the ones read and written.
+// False when that game has not started yet or draws no such panel.
+using DrawPanelFn = bool (*)(const char* panel, bool active);
+
+bool HostDrawGamePanel(const char* gameName, const char* panel) {
+    Game* game = FindGame(gameName);
+    if (game == nullptr || !game->started || game->GetFunction == nullptr || panel == nullptr) {
+        return false;
+    }
+    auto draw = reinterpret_cast<DrawPanelFn>(game->GetFunction("DrawPanel"));
+    if (draw == nullptr) {
+        return false;
+    }
+    const bool active = game == sActive;
+    if (active) {
+        return draw(panel, true);
+    }
+    Ship::GameScope scope(game->name);
+    return draw(panel, false);
+}
+
+// The other game's name, for a game drawing both halves of a panel.
+const char* HostOtherGame(const char* gameName) {
+    for (const Game& game : sGames) {
+        if (game.name != (gameName != nullptr ? gameName : "")) {
+            return game.name.c_str();
+        }
+    }
+    return nullptr;
+}
+
 void* HostFunction(const char* name) {
     if (name == nullptr) {
         return nullptr;
@@ -285,6 +317,12 @@ void* HostFunction(const char* name) {
     }
     if (key == "DrawForeignItem") {
         return reinterpret_cast<void*>(HostDrawForeignItem);
+    }
+    if (key == "DrawGamePanel") {
+        return reinterpret_cast<void*>(HostDrawGamePanel);
+    }
+    if (key == "OtherGame") {
+        return reinterpret_cast<void*>(HostOtherGame);
     }
     // Session services (shared hearts and inventory, deliveries, seed): Session.cpp.
     if (void* service = FleetCombo::TestFunction(name)) {
