@@ -164,7 +164,10 @@ std::optional<Session> LoadSession(int slot) {
     return session;
 }
 
+int sSessionVersion = 0; // changes whenever the active session does, so the games know to read it again
+
 void Activate(Session session) {
+    ++sSessionVersion;
     sSession = std::move(session);
     SPDLOG_WARN("[FleetCombo] Session for slot {} is active (seed {})", sSession->slot,
                 sSession->seed.value("masterSeed", 0u));
@@ -534,12 +537,17 @@ const char* GetSession() {
     return sSessionText.c_str();
 }
 
+int SessionVersion() {
+    return sSessionVersion;
+}
+
 bool SelectFile(int slot) {
     // A file that was created as a combined save brings its session back; plain files play without one.
     if (auto loaded = LoadSession(slot)) {
         Activate(std::move(*loaded));
     } else {
         sSession.reset();
+        ++sSessionVersion;
     }
     return false; // the game's own file select continues
 }
@@ -555,6 +563,7 @@ bool ManageSave(const char* operation, int from, int to) {
         fs::remove(SessionPath(from), error);
         if (sSession && sSession->slot == from) {
             sSession.reset();
+            ++sSessionVersion;
         }
     } else if (op == "copy" && to >= 0) {
         if (fs::exists(SessionPath(from))) {
@@ -756,6 +765,7 @@ void* SessionFunction(const char* name) {
     static const std::map<std::string, void*> services = {
         { "GetSession", reinterpret_cast<void*>(GetSession) },
         { "SelectFile", reinterpret_cast<void*>(SelectFile) },
+        { "SessionVersion", reinterpret_cast<void*>(SessionVersion) },
         { "ManageSave", reinterpret_cast<void*>(ManageSave) },
         { "HasGeneratedSeed", reinterpret_cast<void*>(HasGeneratedSeed) },
         { "GenerateRandomizer", reinterpret_cast<void*>(GenerateRandomizer) },
