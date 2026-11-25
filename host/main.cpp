@@ -298,6 +298,11 @@ const char* HostOtherGame(const char* gameName) {
     return nullptr;
 }
 
+// The game Link is in now.
+const char* HostActiveGame() {
+    return sActive != nullptr ? sActive->name.c_str() : nullptr;
+}
+
 void* HostFunction(const char* name) {
     if (name == nullptr) {
         return nullptr;
@@ -320,6 +325,9 @@ void* HostFunction(const char* name) {
     }
     if (key == "DrawGamePanel") {
         return reinterpret_cast<void*>(HostDrawGamePanel);
+    }
+    if (key == "ActiveGame") {
+        return reinterpret_cast<void*>(HostActiveGame);
     }
     if (key == "OtherGame") {
         return reinterpret_cast<void*>(HostOtherGame);
